@@ -515,68 +515,67 @@ fn navigate_remove(
 ) -> Result(JsonValue, String) {
   case tokens {
     [] -> Error("cannot remove root")
-    [token] -> {
-      case data {
-        Object(d) -> {
-          case dict.has_key(d, token) {
-            True -> {
-              let new_dict = dict.delete(d, token)
-              Ok(Object(new_dict))
-            }
-            False -> Error("path does not exist")
-          }
-        }
-        Array(elements) -> {
-          case has_leading_zero(token) {
-            True -> Error("invalid array index: " <> token)
-            False -> {
-              case int.parse(token) {
-                Ok(index) -> {
-                  case remove_at_index(elements, index) {
-                    Ok(new_array) -> Ok(Array(new_array))
-                    Error(e) -> Error(e)
-                  }
-                }
-                Error(_) -> Error("invalid array index: " <> token)
-              }
-            }
-          }
-        }
-        _ -> Error("cannot remove from non-object/non-array")
+    [token] -> navigate_remove_final(data, token)
+    [token, ..rest] -> navigate_remove_recursive(data, token, rest)
+  }
+}
+
+fn navigate_remove_final(
+  data: JsonValue,
+  token: String,
+) -> Result(JsonValue, String) {
+  case data {
+    Object(d) -> {
+      case dict.has_key(d, token) {
+        True -> Ok(Object(dict.delete(d, token)))
+        False -> Error("path does not exist")
       }
     }
-    [token, ..rest] -> {
-      case data {
-        Object(d) -> {
-          case dict.get(d, token) {
-            Ok(nested) -> {
-              use new_nested <- result.try(navigate_remove(nested, rest))
-              let new_dict = dict.insert(d, token, new_nested)
-              Ok(Object(new_dict))
-            }
-            Error(_) -> Error("path does not exist")
-          }
+    Array(elements) -> {
+      case has_leading_zero(token) {
+        True -> Error("invalid array index: " <> token)
+        False -> {
+          use index <- result.try(
+            int.parse(token)
+            |> result.replace_error("invalid array index: " <> token),
+          )
+          use new_array <- result.try(remove_at_index(elements, index))
+          Ok(Array(new_array))
         }
-        Array(elements) -> {
-          case int.parse(token) {
-            Ok(index) -> {
-              case get_at_index(elements, index) {
-                Ok(nested) -> {
-                  use new_nested <- result.try(navigate_remove(nested, rest))
-                  case replace_at_index(elements, index, new_nested) {
-                    Ok(new_array) -> Ok(Array(new_array))
-                    Error(e) -> Error(e)
-                  }
-                }
-                Error(_) -> Error("array index out of bounds: " <> token)
-              }
-            }
-            Error(_) -> Error("invalid array index: " <> token)
-          }
-        }
-        _ -> Error("cannot navigate into non-object/non-array")
       }
     }
+    _ -> Error("cannot remove from non-object/non-array")
+  }
+}
+
+fn navigate_remove_recursive(
+  data: JsonValue,
+  token: String,
+  rest: List(String),
+) -> Result(JsonValue, String) {
+  case data {
+    Object(d) -> {
+      use nested <- result.try(
+        dict.get(d, token)
+        |> result.replace_error("path does not exist"),
+      )
+      use new_nested <- result.try(navigate_remove(nested, rest))
+      Ok(Object(dict.insert(d, token, new_nested)))
+    }
+    Array(elements) -> {
+      use index <- result.try(
+        int.parse(token)
+        |> result.replace_error("invalid array index: " <> token),
+      )
+      use nested <- result.try(
+        get_at_index(elements, index)
+        |> result.replace_error("array index out of bounds: " <> token),
+      )
+      use new_nested <- result.try(navigate_remove(nested, rest))
+      use new_array <- result.try(replace_at_index(elements, index, new_nested))
+      Ok(Array(new_array))
+    }
+    _ -> Error("cannot navigate into non-object/non-array")
   }
 }
 
