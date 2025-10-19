@@ -9,12 +9,18 @@ import gleam/pair
 import gleam/result
 import gleam/string
 
+/// A JSON object represented as a dictionary mapping strings to JsonValues
 pub type JsonDict =
   dict.Dict(String, JsonValue)
 
+/// A JSON array represented as a list of JsonValues
 pub type JsonArray =
   List(JsonValue)
 
+/// Represents any JSON value
+///
+/// This type can represent all valid JSON values including objects, arrays,
+/// strings, numbers, booleans, and null.
 pub type JsonValue {
   Null
   String(String)
@@ -25,6 +31,19 @@ pub type JsonValue {
   Object(JsonDict)
 }
 
+/// Returns a decoder for parsing JSON into a JsonValue
+///
+/// This decoder can parse any valid JSON value.
+///
+/// ## Example
+///
+/// ```gleam
+/// import gleam/json
+/// import squirtle
+///
+/// json.parse("{\"name\": \"John\"}", squirtle.json_value_decoder())
+/// // => Ok(Object(...))
+/// ```
 pub fn json_value_decoder() -> decode.Decoder(JsonValue) {
   use <- decode.recursive
   decode.one_of(decode.string |> decode.map(String), [
@@ -58,6 +77,16 @@ fn json_object() {
   |> decode.map(Object)
 }
 
+/// Parse a JSON string into a JsonValue
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// squirtle.parse("{\"name\": \"John\", \"age\": 30}")
+/// // => Ok(Object(...))
+/// ```
 pub fn parse(raw: String) -> Result(JsonValue, json.DecodeError) {
   json.parse(raw, json_value_decoder())
 }
@@ -85,14 +114,52 @@ fn do_to_dynamic(value) {
   }
 }
 
+/// Convert a JsonValue to a Dynamic value
+///
+/// This is useful when you need to use the value with Gleam's dynamic decoding functions.
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let value = squirtle.String("hello")
+/// squirtle.to_dynamic(value)
+/// ```
 pub fn to_dynamic(value: JsonValue) {
   do_to_dynamic(value)
 }
 
+/// Decode a JsonValue using a custom decoder
+///
+/// This allows you to decode a JsonValue into a specific Gleam type.
+///
+/// ## Example
+///
+/// ```gleam
+/// import gleam/dynamic/decode
+/// import squirtle
+///
+/// let value = squirtle.Object(...)
+/// squirtle.decode_value(value, decode.field("name", decode.string))
+/// // => Ok("John")
+/// ```
 pub fn decode_value(value: JsonValue, decoder: decode.Decoder(a)) {
   to_dynamic(value) |> decode.run(decoder)
 }
 
+/// Convert a JsonValue to gleam/json's Json type
+///
+/// This is useful when you need to work with the standard library's JSON functions.
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let value = squirtle.String("hello")
+/// squirtle.to_json(value)
+/// ```
 pub fn to_json(value: JsonValue) -> json.Json {
   case value {
     String(s) -> json.string(s)
@@ -105,19 +172,52 @@ pub fn to_json(value: JsonValue) -> json.Json {
   }
 }
 
+/// Convert a JsonValue to a JSON string
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let value = squirtle.Object(...)
+/// squirtle.to_string(value)
+/// // => "{\"name\":\"John\"}"
+/// ```
 pub fn to_string(value: JsonValue) -> String {
   value |> to_json |> json.to_string
 }
 
+/// A JSON Patch operation
+/// Represents one of the six operations defined in RFC 6902:
 pub type Patch {
+  /// Add a value at a path
   Add(path: String, value: JsonValue)
+  /// Remove a value at a path
   Remove(path: String)
+  /// Replace a value at a path
   Replace(path: String, value: JsonValue)
+  /// Copy a value from one path to another
   Copy(from: String, path: String)
+  /// Move a value from one path to another
   Move(from: String, path: String)
+  /// Test that a value at a path equals an expected value
   Test(path: String, value: JsonValue)
 }
 
+/// Returns a decoder for parsing JSON into a Patch operation
+///
+/// This decoder parses a single patch operation from JSON according to RFC 6902.
+///
+/// ## Example
+///
+/// ```gleam
+/// import gleam/json
+/// import squirtle
+///
+/// json.parse("{\"op\": \"add\", \"path\": \"/name\", \"value\": \"John\"}",
+///            squirtle.patch_decoder())
+/// // => Ok(Add("/name", String("John")))
+/// ```
 pub fn patch_decoder() -> decode.Decoder(Patch) {
   use op <- decode.field("op", decode.string)
 

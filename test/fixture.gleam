@@ -2,8 +2,8 @@ import gleam/dynamic/decode
 import gleam/json
 import gleam/list
 import gleam/option
-import squirtle
 import simplifile
+import squirtle
 
 pub type Fixture {
   Passing(

@@ -27,7 +27,9 @@ fn iter_fixtures(fixtures: List(fixture.Fixture)) {
 }
 
 fn run_fixture(fixture: fixture.Fixture) {
-  case squirtle.decode_value(fixture.patch, decode.list(squirtle.patch_decoder())) {
+  case
+    squirtle.decode_value(fixture.patch, decode.list(squirtle.patch_decoder()))
+  {
     Ok(patches) -> {
       let r = squirtle.patch(fixture.doc, patches)
 
