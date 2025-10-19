@@ -1,5 +1,5 @@
 name = "squirtle"
-version = "1.0.0"
+version = "1.0.1"
 
 description = "A JSON Patch (RFC 6902) implementation in Gleam"
 licences = ["MIT"]

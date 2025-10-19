@@ -308,24 +308,25 @@ fn navigate_get(
     [token, ..rest] -> {
       case data {
         Object(dict) -> {
-          case dict.get(dict, token) {
-            Ok(value) -> navigate_get(value, rest)
-            Error(_) -> Error("path /" <> token <> " does not exist")
-          }
+          use value <- result.try(
+            dict.get(dict, token)
+            |> result.replace_error("path /" <> token <> " does not exist"),
+          )
+          navigate_get(value, rest)
         }
         Array(elements) -> {
           case has_leading_zero(token) {
             True -> Error("invalid array index: " <> token)
             False -> {
-              case int.parse(token) {
-                Ok(index) -> {
-                  case get_at_index(elements, index) {
-                    Ok(value) -> navigate_get(value, rest)
-                    Error(_) -> Error("array index out of bounds: " <> token)
-                  }
-                }
-                Error(_) -> Error("invalid array index: " <> token)
-              }
+              use index <- result.try(
+                int.parse(token)
+                |> result.replace_error("invalid array index: " <> token),
+              )
+              use value <- result.try(
+                get_at_index(elements, index)
+                |> result.replace_error("array index out of bounds: " <> token),
+              )
+              navigate_get(value, rest)
             }
           }
         }
