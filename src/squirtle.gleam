@@ -9,8 +9,6 @@ import gleam/pair
 import gleam/result
 import gleam/string
 
-// ---- JSON Value Types ----
-
 pub type JsonDict =
   dict.Dict(String, JsonValue)
 
@@ -26,8 +24,6 @@ pub type JsonValue {
   Array(JsonArray)
   Object(JsonDict)
 }
-
-// ---- JSON Value Functions ----
 
 pub fn json_value_decoder() -> decode.Decoder(JsonValue) {
   use <- decode.recursive
@@ -112,8 +108,6 @@ pub fn to_json(value: JsonValue) -> json.Json {
 pub fn to_string(value: JsonValue) -> String {
   value |> to_json |> json.to_string
 }
-
-// ---- Patch Types ----
 
 pub type Patch {
   Add(path: String, value: JsonValue)
