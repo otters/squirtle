@@ -354,92 +354,98 @@ fn navigate_set(
 ) -> Result(JsonValue, String) {
   case tokens {
     [] -> Ok(value)
-    [token] -> {
-      case data {
-        Object(d) -> {
-          let new_dict = dict.insert(d, token, value)
-          Ok(Object(new_dict))
+    [token] -> navigate_set_final(data, token, value, mode)
+    [token, ..rest] ->
+      navigate_set_recursive(data, token, rest, value, mode, is_add)
+  }
+}
+
+fn navigate_set_final(
+  data: JsonValue,
+  token: String,
+  value: JsonValue,
+  mode: SetMode,
+) -> Result(JsonValue, String) {
+  case data {
+    Object(d) -> Ok(Object(dict.insert(d, token, value)))
+    Array(elements) if token == "-" -> Ok(Array(list.append(elements, [value])))
+    Array(elements) -> {
+      case has_leading_zero(token) {
+        True -> Error("invalid array index: " <> token)
+        False -> {
+          use index <- result.try(
+            int.parse(token)
+            |> result.replace_error("invalid array index: " <> token),
+          )
+          use new_array <- result.try(insert_at_index(
+            elements,
+            index,
+            value,
+            mode,
+          ))
+          Ok(Array(new_array))
         }
-        Array(elements) -> {
-          case token {
-            "-" -> {
-              let new_array = list.append(elements, [value])
-              Ok(Array(new_array))
-            }
-            _ -> {
-              case has_leading_zero(token) {
-                True -> Error("invalid array index: " <> token)
-                False -> {
-                  case int.parse(token) {
-                    Ok(index) -> {
-                      case insert_at_index(elements, index, value, mode) {
-                        Ok(new_array) -> Ok(Array(new_array))
-                        Error(e) -> Error(e)
-                      }
-                    }
-                    Error(_) -> Error("invalid array index: " <> token)
-                  }
-                }
-              }
-            }
-          }
-        }
-        _ -> Error("cannot add to non-object/non-array")
       }
     }
-    [token, ..rest] -> {
-      case data {
-        Object(d) -> {
-          case dict.get(d, token) {
-            Ok(nested) -> {
-              use new_nested <- result.try(navigate_set(
-                nested,
-                rest,
-                value,
-                mode,
-                is_add,
-              ))
-              let new_dict = dict.insert(d, token, new_nested)
-              Ok(Object(new_dict))
-            }
-            Error(_) ->
-              case is_add {
-                True -> Error("add to a non-existent target")
-                False -> Error("path does not exist")
-              }
-          }
+    _ -> Error("cannot add to non-object/non-array")
+  }
+}
+
+fn navigate_set_recursive(
+  data: JsonValue,
+  token: String,
+  rest: List(String),
+  value: JsonValue,
+  mode: SetMode,
+  is_add: Bool,
+) -> Result(JsonValue, String) {
+  case data {
+    Object(d) -> {
+      use nested <- result.try(
+        dict.get(d, token)
+        |> result.replace_error(case is_add {
+          True -> "add to a non-existent target"
+          False -> "path does not exist"
+        }),
+      )
+      use new_nested <- result.try(navigate_set(
+        nested,
+        rest,
+        value,
+        mode,
+        is_add,
+      ))
+      Ok(Object(dict.insert(d, token, new_nested)))
+    }
+    Array(elements) -> {
+      case has_leading_zero(token) {
+        True -> Error("invalid array index: " <> token)
+        False -> {
+          use index <- result.try(
+            int.parse(token)
+            |> result.replace_error("invalid array index: " <> token),
+          )
+          use nested <- result.try(
+            get_at_index(elements, index)
+            |> result.replace_error("array index out of bounds: " <> token),
+          )
+          use new_nested <- result.try(navigate_set(
+            nested,
+            rest,
+            value,
+            mode,
+            is_add,
+          ))
+          use new_array <- result.try(replace_at_index(
+            elements,
+            index,
+            new_nested,
+          ))
+          Ok(Array(new_array))
         }
-        Array(elements) -> {
-          case has_leading_zero(token) {
-            True -> Error("invalid array index: " <> token)
-            False -> {
-              case int.parse(token) {
-                Ok(index) -> {
-                  case get_at_index(elements, index) {
-                    Ok(nested) -> {
-                      use new_nested <- result.try(navigate_set(
-                        nested,
-                        rest,
-                        value,
-                        mode,
-                        is_add,
-                      ))
-                      case replace_at_index(elements, index, new_nested) {
-                        Ok(new_array) -> Ok(Array(new_array))
-                        Error(e) -> Error(e)
-                      }
-                    }
-                    Error(_) -> Error("array index out of bounds: " <> token)
-                  }
-                }
-                Error(_) -> Error("invalid array index: " <> token)
-              }
-            }
-          }
-        }
-        _ -> Error("cannot navigate into non-object/non-array")
       }
     }
+    _ -> Error("cannot navigate into non-object/non-array")
   }
 }
 
