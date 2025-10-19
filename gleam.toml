@@ -3,6 +3,7 @@ version = "1.0.0"
 
 description = "A JSON Patch (RFC 6902) implementation in Gleam"
 licences = ["MIT"]
+repository = { type = "github", user = "alii", repo = "squirtle" }
 
 [dependencies]
 gleam_json = ">= 3.0.0 and < 4.0.0"
