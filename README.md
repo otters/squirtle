@@ -44,7 +44,7 @@ import gleam/io
 import squirtle
 
 pub fn main() {
-   let assert Ok(doc) = squirtle.parse("{\"name\": \"John\", \"age\": 30}")
+   let assert Ok(doc) = squirtle.json_value_parse("{\"name\": \"John\", \"age\": 30}")
 
    let patches = [
     squirtle.Replace(path: "/name", value: squirtle.String("Jane")),
@@ -54,7 +54,7 @@ pub fn main() {
 
    case squirtle.patch(doc, patches) {
     Ok(result) -> {
-      io.println(squirtle.to_string(result))
+      io.println(squirtle.json_value_to_string(result))
       // => {"name":"Jane","email":"jane@example.com"}
     }
     Error(reason) -> io.println("Patch failed: " <> reason)

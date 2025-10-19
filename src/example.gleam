@@ -102,7 +102,7 @@ pub fn main() {
 
   // Example 6: Programmatic API
   io.println("6. Programmatic API:")
-  let assert Ok(doc6) = squirtle.parse("{\"count\": 0}")
+  let assert Ok(doc6) = squirtle.json_value_parse("{\"count\": 0}")
 
   let patches6 = [
     squirtle.Replace(path: "/count", value: squirtle.Int(42)),
@@ -112,7 +112,7 @@ pub fn main() {
   case squirtle.patch(doc6, patches6) {
     Ok(result) -> {
       io.println("  Input:  {\"count\": 0}")
-      io.println("  Output: " <> squirtle.to_string(result))
+      io.println("  Output: " <> squirtle.json_value_to_string(result))
     }
     Error(reason) -> io.println("  Error: " <> reason)
   }

@@ -47,34 +47,14 @@ pub type JsonValue {
 pub fn json_value_decoder() -> decode.Decoder(JsonValue) {
   use <- decode.recursive
   decode.one_of(decode.string |> decode.map(String), [
-    json_int(),
-    json_bool(),
-    json_float(),
-    json_array(),
-    json_object(),
+    decode.int |> decode.map(Int),
+    decode.bool |> decode.map(Bool),
+    decode.float |> decode.map(Float),
+    decode.list(json_value_decoder()) |> decode.map(Array),
+    decode.dict(decode.string, json_value_decoder())
+      |> decode.map(Object),
     decode.success(Null),
   ])
-}
-
-fn json_bool() {
-  decode.bool |> decode.map(Bool)
-}
-
-fn json_float() {
-  decode.float |> decode.map(Float)
-}
-
-fn json_int() {
-  decode.int |> decode.map(Int)
-}
-
-fn json_array() {
-  decode.list(json_value_decoder()) |> decode.map(Array)
-}
-
-fn json_object() {
-  decode.dict(decode.string, json_value_decoder())
-  |> decode.map(Object)
 }
 
 /// Parse a JSON string into a JsonValue
@@ -87,31 +67,8 @@ fn json_object() {
 /// squirtle.parse("{\"name\": \"John\", \"age\": 30}")
 /// // => Ok(Object(...))
 /// ```
-pub fn parse(raw: String) -> Result(JsonValue, json.DecodeError) {
+pub fn json_value_parse(raw: String) -> Result(JsonValue, json.DecodeError) {
   json.parse(raw, json_value_decoder())
-}
-
-fn do_to_dynamic(value) {
-  case value {
-    String(s) -> dynamic.string(s)
-    Int(i) -> dynamic.int(i)
-    Bool(b) -> dynamic.bool(b)
-    Float(f) -> dynamic.float(f)
-    Array(arr) -> dynamic.list(arr |> list.map(do_to_dynamic))
-    Null -> dynamic.nil()
-    Object(obj) -> {
-      let d =
-        obj
-        |> dict.to_list
-        |> list.map(fn(p) {
-          p
-          |> pair.map_first(dynamic.string)
-          |> pair.map_second(do_to_dynamic)
-        })
-
-      dynamic.properties(d)
-    }
-  }
 }
 
 /// Convert a JsonValue to a Dynamic value
@@ -124,10 +81,29 @@ fn do_to_dynamic(value) {
 /// import squirtle
 ///
 /// let value = squirtle.String("hello")
-/// squirtle.to_dynamic(value)
+/// squirtle.json_value_to_dynamic(value)
 /// ```
-pub fn to_dynamic(value: JsonValue) {
-  do_to_dynamic(value)
+pub fn json_value_to_dynamic(value: JsonValue) {
+  case value {
+    String(s) -> dynamic.string(s)
+    Int(i) -> dynamic.int(i)
+    Bool(b) -> dynamic.bool(b)
+    Float(f) -> dynamic.float(f)
+    Array(arr) -> dynamic.list(arr |> list.map(json_value_to_dynamic))
+    Null -> dynamic.nil()
+    Object(obj) -> {
+      let d =
+        obj
+        |> dict.to_list
+        |> list.map(fn(p) {
+          p
+          |> pair.map_first(dynamic.string)
+          |> pair.map_second(json_value_to_dynamic)
+        })
+
+      dynamic.properties(d)
+    }
+  }
 }
 
 /// Decode a JsonValue using a custom decoder
@@ -141,11 +117,11 @@ pub fn to_dynamic(value: JsonValue) {
 /// import squirtle
 ///
 /// let value = squirtle.Object(...)
-/// squirtle.decode_value(value, decode.field("name", decode.string))
+/// squirtle.json_value_decode(value, decode.field("name", decode.string))
 /// // => Ok("John")
 /// ```
-pub fn decode_value(value: JsonValue, decoder: decode.Decoder(a)) {
-  to_dynamic(value) |> decode.run(decoder)
+pub fn json_value_decode(value: JsonValue, decoder: decode.Decoder(a)) {
+  json_value_to_dynamic(value) |> decode.run(decoder)
 }
 
 /// Convert a JsonValue to gleam/json's Json type
@@ -158,16 +134,16 @@ pub fn decode_value(value: JsonValue, decoder: decode.Decoder(a)) {
 /// import squirtle
 ///
 /// let value = squirtle.String("hello")
-/// squirtle.to_json(value)
+/// squirtle.json_value_to_json(value)
 /// ```
-pub fn to_json(value: JsonValue) -> json.Json {
+pub fn json_value_to_json(value: JsonValue) -> json.Json {
   case value {
     String(s) -> json.string(s)
     Int(i) -> json.int(i)
     Bool(b) -> json.bool(b)
     Float(f) -> json.float(f)
-    Array(arr) -> json.array(arr, to_json)
-    Object(obj) -> json.dict(obj, function.identity, to_json)
+    Array(arr) -> json.array(arr, json_value_to_json)
+    Object(obj) -> json.dict(obj, function.identity, json_value_to_json)
     Null -> json.null()
   }
 }
@@ -180,11 +156,11 @@ pub fn to_json(value: JsonValue) -> json.Json {
 /// import squirtle
 ///
 /// let value = squirtle.Object(...)
-/// squirtle.to_string(value)
+/// squirtle.json_value_to_string(value)
 /// // => "{\"name\":\"John\"}"
 /// ```
-pub fn to_string(value: JsonValue) -> String {
-  value |> to_json |> json.to_string
+pub fn json_value_to_string(value: JsonValue) -> String {
+  value |> json_value_to_json |> json.to_string
 }
 
 /// A JSON Patch operation
@@ -677,7 +653,7 @@ fn do_patch_iter(acc: JsonValue, patches: List(Patch)) {
 /// ```
 pub fn patch_string(data: String, patches: String) -> Result(String, String) {
   use doc <- result.try(
-    parse(data)
+    json_value_parse(data)
     |> result.map_error(fn(e) {
       "Failed to parse document: " <> string.inspect(e)
     }),
@@ -689,7 +665,7 @@ pub fn patch_string(data: String, patches: String) -> Result(String, String) {
     }),
   )
   use patched <- result.try(patch(doc, patch_list))
-  Ok(to_string(patched))
+  Ok(json_value_to_string(patched))
 }
 
 /// Parse a JSON array of patch operations from a string
