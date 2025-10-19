@@ -4,7 +4,6 @@ import gleam/list
 import gleam/option
 import gleam/result
 import gleeunit
-import json_value
 import squirtle
 
 pub fn main() -> Nil {
@@ -28,7 +27,7 @@ fn iter_fixtures(fixtures: List(fixture.Fixture)) {
 }
 
 fn run_fixture(fixture: fixture.Fixture) {
-  case json_value.decode(fixture.patch, decode.list(squirtle.patch_decoder())) {
+  case squirtle.decode_value(fixture.patch, decode.list(squirtle.patch_decoder())) {
     Ok(patches) -> {
       let r = squirtle.patch(fixture.doc, patches)
 

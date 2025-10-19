@@ -1,18 +1,127 @@
 import gleam/dict
+import gleam/dynamic
 import gleam/dynamic/decode
+import gleam/function
 import gleam/int
+import gleam/json
 import gleam/list
+import gleam/pair
 import gleam/result
 import gleam/string
-import json_value
+
+// ---- JSON Value Types ----
+
+pub type JsonDict =
+  dict.Dict(String, JsonValue)
+
+pub type JsonArray =
+  List(JsonValue)
+
+pub type JsonValue {
+  Null
+  String(String)
+  Int(Int)
+  Bool(Bool)
+  Float(Float)
+  Array(JsonArray)
+  Object(JsonDict)
+}
+
+// ---- JSON Value Functions ----
+
+pub fn json_value_decoder() -> decode.Decoder(JsonValue) {
+  use <- decode.recursive
+  decode.one_of(decode.string |> decode.map(String), [
+    json_int(),
+    json_bool(),
+    json_float(),
+    json_array(),
+    json_object(),
+    decode.success(Null),
+  ])
+}
+
+fn json_bool() {
+  decode.bool |> decode.map(Bool)
+}
+
+fn json_float() {
+  decode.float |> decode.map(Float)
+}
+
+fn json_int() {
+  decode.int |> decode.map(Int)
+}
+
+fn json_array() {
+  decode.list(json_value_decoder()) |> decode.map(Array)
+}
+
+fn json_object() {
+  decode.dict(decode.string, json_value_decoder())
+  |> decode.map(Object)
+}
+
+pub fn parse(raw: String) -> Result(JsonValue, json.DecodeError) {
+  json.parse(raw, json_value_decoder())
+}
+
+fn do_to_dynamic(value) {
+  case value {
+    String(s) -> dynamic.string(s)
+    Int(i) -> dynamic.int(i)
+    Bool(b) -> dynamic.bool(b)
+    Float(f) -> dynamic.float(f)
+    Array(arr) -> dynamic.list(arr |> list.map(do_to_dynamic))
+    Null -> dynamic.nil()
+    Object(obj) -> {
+      let d =
+        obj
+        |> dict.to_list
+        |> list.map(fn(p) {
+          p
+          |> pair.map_first(dynamic.string)
+          |> pair.map_second(do_to_dynamic)
+        })
+
+      dynamic.properties(d)
+    }
+  }
+}
+
+pub fn to_dynamic(value: JsonValue) {
+  do_to_dynamic(value)
+}
+
+pub fn decode_value(value: JsonValue, decoder: decode.Decoder(a)) {
+  to_dynamic(value) |> decode.run(decoder)
+}
+
+pub fn to_json(value: JsonValue) -> json.Json {
+  case value {
+    String(s) -> json.string(s)
+    Int(i) -> json.int(i)
+    Bool(b) -> json.bool(b)
+    Float(f) -> json.float(f)
+    Array(arr) -> json.array(arr, to_json)
+    Object(obj) -> json.dict(obj, function.identity, to_json)
+    Null -> json.null()
+  }
+}
+
+pub fn to_string(value: JsonValue) -> String {
+  value |> to_json |> json.to_string
+}
+
+// ---- Patch Types ----
 
 pub type Patch {
-  Add(path: String, value: json_value.JsonValue)
+  Add(path: String, value: JsonValue)
   Remove(path: String)
-  Replace(path: String, value: json_value.JsonValue)
+  Replace(path: String, value: JsonValue)
   Copy(from: String, path: String)
   Move(from: String, path: String)
-  Test(path: String, value: json_value.JsonValue)
+  Test(path: String, value: JsonValue)
 }
 
 pub fn patch_decoder() -> decode.Decoder(Patch) {
@@ -21,7 +130,7 @@ pub fn patch_decoder() -> decode.Decoder(Patch) {
   case op {
     "add" -> {
       use path <- decode.field("path", decode.string)
-      use value <- decode.field("value", json_value.decoder())
+      use value <- decode.field("value", json_value_decoder())
       decode.success(Add(path:, value:))
     }
 
@@ -32,7 +141,7 @@ pub fn patch_decoder() -> decode.Decoder(Patch) {
 
     "replace" -> {
       use path <- decode.field("path", decode.string)
-      use value <- decode.field("value", json_value.decoder())
+      use value <- decode.field("value", json_value_decoder())
       decode.success(Replace(path:, value:))
     }
 
@@ -50,7 +159,7 @@ pub fn patch_decoder() -> decode.Decoder(Patch) {
 
     "test" -> {
       use path <- decode.field("path", decode.string)
-      use value <- decode.field("value", json_value.decoder())
+      use value <- decode.field("value", json_value_decoder())
       decode.success(Test(path:, value:))
     }
 
@@ -58,7 +167,7 @@ pub fn patch_decoder() -> decode.Decoder(Patch) {
   }
 }
 
-pub fn patch(data: json_value.JsonValue, patches: List(Patch)) {
+pub fn patch(data: JsonValue, patches: List(Patch)) {
   do_patch_iter(data, patches)
 }
 
@@ -96,29 +205,26 @@ fn get_at_index(lst: List(a), index: Int) -> Result(a, Nil) {
   }
 }
 
-fn get_value(
-  data: json_value.JsonValue,
-  path: String,
-) -> Result(json_value.JsonValue, String) {
+fn get_value(data: JsonValue, path: String) -> Result(JsonValue, String) {
   use tokens <- result.try(parse_path(path))
   navigate_get(data, tokens)
 }
 
 fn navigate_get(
-  data: json_value.JsonValue,
+  data: JsonValue,
   tokens: List(String),
-) -> Result(json_value.JsonValue, String) {
+) -> Result(JsonValue, String) {
   case tokens {
     [] -> Ok(data)
     [token, ..rest] -> {
       case data {
-        json_value.Object(dict) -> {
+        Object(dict) -> {
           case dict.get(dict, token) {
             Ok(value) -> navigate_get(value, rest)
             Error(_) -> Error("path /" <> token <> " does not exist")
           }
         }
-        json_value.Array(elements) -> {
+        Array(elements) -> {
           case has_leading_zero(token) {
             True -> Error("invalid array index: " <> token)
             False -> {
@@ -140,7 +246,7 @@ fn navigate_get(
   }
 }
 
-fn add(data: json_value.JsonValue, path: String, value: json_value.JsonValue) {
+fn add(data: JsonValue, path: String, value: JsonValue) {
   use tokens <- result.try(parse_path(path))
   navigate_set(data, tokens, value, AddMode, True)
 }
@@ -151,25 +257,25 @@ type SetMode {
 }
 
 fn navigate_set(
-  data: json_value.JsonValue,
+  data: JsonValue,
   tokens: List(String),
-  value: json_value.JsonValue,
+  value: JsonValue,
   mode: SetMode,
   is_add: Bool,
-) -> Result(json_value.JsonValue, String) {
+) -> Result(JsonValue, String) {
   case tokens {
     [] -> Ok(value)
     [token] -> {
       case data {
-        json_value.Object(d) -> {
+        Object(d) -> {
           let new_dict = dict.insert(d, token, value)
-          Ok(json_value.Object(new_dict))
+          Ok(Object(new_dict))
         }
-        json_value.Array(elements) -> {
+        Array(elements) -> {
           case token {
             "-" -> {
               let new_array = list.append(elements, [value])
-              Ok(json_value.Array(new_array))
+              Ok(Array(new_array))
             }
             _ -> {
               case has_leading_zero(token) {
@@ -178,7 +284,7 @@ fn navigate_set(
                   case int.parse(token) {
                     Ok(index) -> {
                       case insert_at_index(elements, index, value, mode) {
-                        Ok(new_array) -> Ok(json_value.Array(new_array))
+                        Ok(new_array) -> Ok(Array(new_array))
                         Error(e) -> Error(e)
                       }
                     }
@@ -194,7 +300,7 @@ fn navigate_set(
     }
     [token, ..rest] -> {
       case data {
-        json_value.Object(d) -> {
+        Object(d) -> {
           case dict.get(d, token) {
             Ok(nested) -> {
               use new_nested <- result.try(navigate_set(
@@ -205,7 +311,7 @@ fn navigate_set(
                 is_add,
               ))
               let new_dict = dict.insert(d, token, new_nested)
-              Ok(json_value.Object(new_dict))
+              Ok(Object(new_dict))
             }
             Error(_) ->
               case is_add {
@@ -214,7 +320,7 @@ fn navigate_set(
               }
           }
         }
-        json_value.Array(elements) -> {
+        Array(elements) -> {
           case has_leading_zero(token) {
             True -> Error("invalid array index: " <> token)
             False -> {
@@ -230,7 +336,7 @@ fn navigate_set(
                         is_add,
                       ))
                       case replace_at_index(elements, index, new_nested) {
-                        Ok(new_array) -> Ok(json_value.Array(new_array))
+                        Ok(new_array) -> Ok(Array(new_array))
                         Error(e) -> Error(e)
                       }
                     }
@@ -302,36 +408,36 @@ fn do_replace_at_index(
   }
 }
 
-fn remove(data: json_value.JsonValue, path: String) {
+fn remove(data: JsonValue, path: String) {
   use tokens <- result.try(parse_path(path))
   navigate_remove(data, tokens)
 }
 
 fn navigate_remove(
-  data: json_value.JsonValue,
+  data: JsonValue,
   tokens: List(String),
-) -> Result(json_value.JsonValue, String) {
+) -> Result(JsonValue, String) {
   case tokens {
     [] -> Error("cannot remove root")
     [token] -> {
       case data {
-        json_value.Object(d) -> {
+        Object(d) -> {
           case dict.has_key(d, token) {
             True -> {
               let new_dict = dict.delete(d, token)
-              Ok(json_value.Object(new_dict))
+              Ok(Object(new_dict))
             }
             False -> Error("path does not exist")
           }
         }
-        json_value.Array(elements) -> {
+        Array(elements) -> {
           case has_leading_zero(token) {
             True -> Error("invalid array index: " <> token)
             False -> {
               case int.parse(token) {
                 Ok(index) -> {
                   case remove_at_index(elements, index) {
-                    Ok(new_array) -> Ok(json_value.Array(new_array))
+                    Ok(new_array) -> Ok(Array(new_array))
                     Error(e) -> Error(e)
                   }
                 }
@@ -345,24 +451,24 @@ fn navigate_remove(
     }
     [token, ..rest] -> {
       case data {
-        json_value.Object(d) -> {
+        Object(d) -> {
           case dict.get(d, token) {
             Ok(nested) -> {
               use new_nested <- result.try(navigate_remove(nested, rest))
               let new_dict = dict.insert(d, token, new_nested)
-              Ok(json_value.Object(new_dict))
+              Ok(Object(new_dict))
             }
             Error(_) -> Error("path does not exist")
           }
         }
-        json_value.Array(elements) -> {
+        Array(elements) -> {
           case int.parse(token) {
             Ok(index) -> {
               case get_at_index(elements, index) {
                 Ok(nested) -> {
                   use new_nested <- result.try(navigate_remove(nested, rest))
                   case replace_at_index(elements, index, new_nested) {
-                    Ok(new_array) -> Ok(json_value.Array(new_array))
+                    Ok(new_array) -> Ok(Array(new_array))
                     Error(e) -> Error(e)
                   }
                 }
@@ -398,27 +504,23 @@ fn do_remove_at_index(
   }
 }
 
-fn replace(
-  data: json_value.JsonValue,
-  path: String,
-  value: json_value.JsonValue,
-) {
+fn replace(data: JsonValue, path: String, value: JsonValue) {
   use tokens <- result.try(parse_path(path))
   navigate_set(data, tokens, value, ReplaceMode, False)
 }
 
-fn copy(data: json_value.JsonValue, from: String, path: String) {
+fn copy(data: JsonValue, from: String, path: String) {
   use from_value <- result.try(get_value(data, from))
   add(data, path, from_value)
 }
 
-fn move(data: json_value.JsonValue, from: String, path: String) {
+fn move(data: JsonValue, from: String, path: String) {
   use from_value <- result.try(get_value(data, from))
   use after_remove <- result.try(remove(data, from))
   add(after_remove, path, from_value)
 }
 
-fn test_(data: json_value.JsonValue, path: String, value: json_value.JsonValue) {
+fn test_(data: JsonValue, path: String, value: JsonValue) {
   use found_value <- result.try(get_value(data, path))
   case found_value == value {
     True -> Ok(data)
@@ -426,7 +528,7 @@ fn test_(data: json_value.JsonValue, path: String, value: json_value.JsonValue) 
   }
 }
 
-fn do_patch_iter(acc: json_value.JsonValue, patches: List(Patch)) {
+fn do_patch_iter(acc: JsonValue, patches: List(Patch)) {
   case patches {
     [] -> Ok(acc)
     [patch, ..rest] -> {
@@ -442,4 +544,25 @@ fn do_patch_iter(acc: json_value.JsonValue, patches: List(Patch)) {
       do_patch_iter(next, rest)
     }
   }
+}
+
+pub fn patch_string(data: String, patches: String) -> Result(String, String) {
+  use doc <- result.try(
+    parse(data)
+    |> result.map_error(fn(e) {
+      "Failed to parse document: " <> string.inspect(e)
+    }),
+  )
+  use patch_list <- result.try(
+    json.parse(patches, decode.list(patch_decoder()))
+    |> result.map_error(fn(e) {
+      "Failed to parse patches: " <> string.inspect(e)
+    }),
+  )
+  use patched <- result.try(patch(doc, patch_list))
+  Ok(to_string(patched))
+}
+
+pub fn parse_patches(patches: String) -> Result(List(Patch), json.DecodeError) {
+  json.parse(patches, decode.list(patch_decoder()))
 }

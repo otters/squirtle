@@ -2,21 +2,21 @@ import gleam/dynamic/decode
 import gleam/json
 import gleam/list
 import gleam/option
-import json_value
+import squirtle
 import simplifile
 
 pub type Fixture {
   Passing(
     comment: option.Option(String),
-    doc: json_value.JsonValue,
-    patch: json_value.JsonValue,
-    expected: json_value.JsonValue,
+    doc: squirtle.JsonValue,
+    patch: squirtle.JsonValue,
+    expected: squirtle.JsonValue,
     disabled: Bool,
   )
   Failing(
     comment: option.Option(String),
-    doc: json_value.JsonValue,
-    patch: json_value.JsonValue,
+    doc: squirtle.JsonValue,
+    patch: squirtle.JsonValue,
     error: String,
     disabled: Bool,
   )
@@ -24,17 +24,17 @@ pub type Fixture {
 
 pub fn fixture_decoder() {
   use disabled <- decode.optional_field("disabled", False, decode.bool)
-  use doc <- decode.field("doc", json_value.decoder())
+  use doc <- decode.field("doc", squirtle.json_value_decoder())
   use comment <- decode.optional_field(
     "comment",
     option.None,
     decode.string |> decode.map(option.Some),
   )
-  use patch <- decode.field("patch", json_value.decoder())
+  use patch <- decode.field("patch", squirtle.json_value_decoder())
   use expected <- decode.optional_field(
     "expected",
     option.None,
-    json_value.decoder() |> decode.map(fn(val) { option.Some(val) }),
+    squirtle.json_value_decoder() |> decode.map(fn(val) { option.Some(val) }),
   )
 
   case expected {
