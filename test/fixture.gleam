@@ -49,7 +49,8 @@ pub fn fixture_decoder() {
 
 pub fn load_fixtures_from_file(file) {
   let assert Ok(json_string) = simplifile.read(file)
-  let assert Ok(fixtures) = json.parse(json_string, decode.list(fixture_decoder()))
+  let assert Ok(fixtures) =
+    json.parse(json_string, decode.list(fixture_decoder()))
   fixtures
 }
 
