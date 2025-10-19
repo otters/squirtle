@@ -261,6 +261,25 @@ pub fn patch_decoder() -> decode.Decoder(Patch) {
   }
 }
 
+/// Apply a list of patch operations to a JSON document
+///
+/// Applies all patches in order, returning the modified document or an error if any patch fails.
+/// All patches must succeed for the operation to succeed.
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let assert Ok(doc) = squirtle.parse("{\"name\": \"John\"}")
+/// let patches = [
+///   squirtle.Replace(path: "/name", value: squirtle.String("Jane")),
+///   squirtle.Add(path: "/age", value: squirtle.Int(30)),
+/// ]
+///
+/// squirtle.patch(doc, patches)
+/// // => Ok(Object(...))
+/// ```
 pub fn patch(data: JsonValue, patches: List(Patch)) {
   do_patch_iter(data, patches)
 }
@@ -640,6 +659,22 @@ fn do_patch_iter(acc: JsonValue, patches: List(Patch)) {
   }
 }
 
+/// Parse and apply JSON patches to a JSON document, both provided as strings
+///
+/// This is a convenience function that combines parsing, patching, and stringifying.
+/// Returns the patched document as a JSON string.
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let doc = "{\"name\":\"John\",\"age\":30}"
+/// let patches = "[{\"op\":\"replace\",\"path\":\"/name\",\"value\":\"Jane\"}]"
+///
+/// squirtle.patch_string(doc, patches)
+/// // => Ok("{\"name\":\"Jane\",\"age\":30}")
+/// ```
 pub fn patch_string(data: String, patches: String) -> Result(String, String) {
   use doc <- result.try(
     parse(data)
@@ -657,6 +692,21 @@ pub fn patch_string(data: String, patches: String) -> Result(String, String) {
   Ok(to_string(patched))
 }
 
+/// Parse a JSON array of patch operations from a string
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let patches_json = "[
+///   {\"op\": \"add\", \"path\": \"/name\", \"value\": \"John\"},
+///   {\"op\": \"remove\", \"path\": \"/age\"}
+/// ]"
+///
+/// squirtle.parse_patches(patches_json)
+/// // => Ok([Add("/name", String("John")), Remove("/age")])
+/// ```
 pub fn parse_patches(patches: String) -> Result(List(Patch), json.DecodeError) {
   json.parse(patches, decode.list(patch_decoder()))
 }
