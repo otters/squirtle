@@ -7,6 +7,7 @@ import gleam/json
 import gleam/list
 import gleam/pair
 import gleam/result
+import gleam/set
 import gleam/string
 
 /// A JSON object represented as a dictionary mapping strings to JsonValues
@@ -276,6 +277,12 @@ fn decode_pointer_token(token: String) -> String {
   token
   |> string.replace("~1", "/")
   |> string.replace("~0", "~")
+}
+
+fn encode_pointer_token(token: String) -> String {
+  token
+  |> string.replace("~", "~0")
+  |> string.replace("/", "~1")
 }
 
 fn has_leading_zero(s: String) -> Bool {
@@ -691,4 +698,124 @@ pub fn patch_string(data: String, patches: String) -> Result(String, String) {
 /// ```
 pub fn parse_patches(patches: String) -> Result(List(Patch), json.DecodeError) {
   json.parse(patches, decode.list(patch_decoder()))
+}
+
+fn diff_arrays(from: JsonArray, to: JsonArray, path: String) -> List(Patch) {
+  let from_len = list.length(from)
+  let to_len = list.length(to)
+  let min_len = case from_len < to_len {
+    True -> from_len
+    False -> to_len
+  }
+
+  let change_patches = case min_len > 0 {
+    True ->
+      list.range(0, min_len - 1)
+      |> list.flat_map(fn(idx) {
+        let assert Ok(from_val) = get_at_index(from, idx)
+        let assert Ok(to_val) = get_at_index(to, idx)
+        do_diff(from_val, to_val, path <> "/" <> int.to_string(idx))
+      })
+    False -> []
+  }
+
+  let add_patches = case to_len > from_len {
+    True -> {
+      list.range(from_len, to_len - 1)
+      |> list.map(fn(idx) {
+        let assert Ok(val) = get_at_index(to, idx)
+        Add(path: path <> "/-", value: val)
+      })
+    }
+    False -> []
+  }
+
+  let remove_patches = case from_len > to_len {
+    True -> {
+      list.range(to_len, from_len - 1)
+      |> list.reverse
+      |> list.map(fn(idx) { Remove(path: path <> "/" <> int.to_string(idx)) })
+    }
+    False -> []
+  }
+
+  list.flatten([change_patches, add_patches, remove_patches])
+}
+
+fn diff_objects(from: JsonDict, to: JsonDict, path: String) -> List(Patch) {
+  let from_keys = dict.keys(from) |> set.from_list
+  let to_keys = dict.keys(to) |> set.from_list
+
+  let removed = set.difference(from_keys, to_keys)
+  let remove_patches =
+    set.to_list(removed)
+    |> list.map(fn(key) {
+      Remove(path: path <> "/" <> encode_pointer_token(key))
+    })
+
+  let added = set.difference(to_keys, from_keys)
+  let add_patches =
+    set.to_list(added)
+    |> list.map(fn(key) {
+      let assert Ok(value) = dict.get(to, key)
+      Add(path: path <> "/" <> encode_pointer_token(key), value: value)
+    })
+
+  let common = set.intersection(from_keys, to_keys)
+  let change_patches =
+    set.to_list(common)
+    |> list.flat_map(fn(key) {
+      let assert Ok(from_value) = dict.get(from, key)
+      let assert Ok(to_value) = dict.get(to, key)
+      do_diff(from_value, to_value, path <> "/" <> encode_pointer_token(key))
+    })
+
+  list.flatten([remove_patches, add_patches, change_patches])
+}
+
+fn do_diff(from: JsonValue, to: JsonValue, path: String) -> List(Patch) {
+  case from == to {
+    True -> []
+    False ->
+      case from, to {
+        Object(from_obj), Object(to_obj) -> diff_objects(from_obj, to_obj, path)
+        Array(from_arr), Array(to_arr) -> diff_arrays(from_arr, to_arr, path)
+        _, _ -> [Replace(path: path, value: to)]
+      }
+  }
+}
+
+/// Generate a list of patch operations that transform one JSON value into another
+///
+/// This function compares two JsonValues and produces the minimal set of patches
+/// that, when applied to the first value, will produce the second value.
+///
+/// ## Example
+///
+/// ```gleam
+/// import gleam/dict
+/// import squirtle
+///
+/// let doc1 = squirtle.Object(dict.from_list([
+///   #("name", squirtle.String("John")),
+///   #("age", squirtle.Int(30))
+/// ]))
+///
+/// let doc2 = squirtle.Object(dict.from_list([
+///   #("name", squirtle.String("Jane")),
+///   #("age", squirtle.Int(30)),
+///   #("email", squirtle.String("jane@example.com"))
+/// ]))
+///
+/// let patches = squirtle.diff(doc1, doc2)
+/// // => [
+/// //   Replace(path: "/name", value: String("Jane")),
+/// //   Add(path: "/email", value: String("jane@example.com"))
+/// // ]
+///
+/// squirtle.patch(doc1, patches)
+/// // => Ok(doc2)
+/// ```
+pub fn diff(from: JsonValue, to: JsonValue) -> List(Patch) {
+  do_diff(from, to, "")
 }
