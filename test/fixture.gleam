@@ -58,9 +58,5 @@ pub fn load_fixtures() {
   []
   |> list.append(load_fixtures_from_file("./test/spec_tests.json"))
   |> list.append(load_fixtures_from_file("./test/tests.json"))
-  |> list.filter(fn(f) {
-    case f {
-      Passing(disabled: d, ..) | Failing(disabled: d, ..) -> !d
-    }
-  })
+  |> list.filter(fn(f) { !f.disabled })
 }
