@@ -52,15 +52,24 @@ pub fn float() {
   decode.float |> decode.map(Float)
 }
 
+/// Decoder that parses a JSON array into a JsonValue list
+pub fn list() -> decode.Decoder(JsonArray) {
+  decode.list(json_value_decoder())
+}
+
 /// Decoder that parses a JSON array into a JsonValue
 pub fn array() {
-  decode.list(json_value_decoder()) |> decode.map(Array)
+  list() |> decode.map(Array)
+}
+
+/// Decoder that parses a JSON dictionary into a JsonDict
+pub fn dict() -> decode.Decoder(JsonDict) {
+  decode.dict(decode.string, json_value_decoder())
 }
 
 /// Decoder that parses a JSON object into a JsonValue
 pub fn object() {
-  decode.dict(decode.string, json_value_decoder())
-  |> decode.map(Object)
+  dict() |> decode.map(Object)
 }
 
 /// Decoder that parses a JSON null into a JsonValue
