@@ -944,3 +944,28 @@ pub fn patch_to_json_value(patch: Patch) -> JsonValue {
 pub fn patch_to_string(patch: Patch) -> String {
   patch |> patch_to_json_value |> json_value_to_string
 }
+
+/// Convert a list of Patch operations to a JSON array string
+///
+/// This function converts a list of patch operations to their JSON array string
+/// representation according to RFC 6902 format, making it easy to send patches
+/// over the wire.
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let patches = [
+///   squirtle.Replace(path: "/name", value: squirtle.String("Jane")),
+///   squirtle.Add(path: "/age", value: squirtle.Int(30)),
+/// ]
+/// squirtle.patches_to_string(patches)
+/// // => "[{\"op\":\"replace\",\"path\":\"/name\",\"value\":\"Jane\"},{\"op\":\"add\",\"path\":\"/age\",\"value\":30}]"
+/// ```
+pub fn patches_to_string(patches: List(Patch)) -> String {
+  patches
+  |> list.map(patch_to_json_value)
+  |> Array
+  |> json_value_to_string
+}
