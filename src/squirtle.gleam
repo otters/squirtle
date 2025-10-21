@@ -32,6 +32,42 @@ pub type JsonValue {
   Object(JsonDict)
 }
 
+/// Decoder that parses a JSON string into a JsonValue
+pub fn string() {
+  decode.string |> decode.map(String)
+}
+
+/// Decoder that parses a JSON integer into a JsonValue
+pub fn int() {
+  decode.int |> decode.map(Int)
+}
+
+/// Decoder that parses a JSON boolean into a JsonValue
+pub fn bool() {
+  decode.bool |> decode.map(Bool)
+}
+
+/// Decoder that parses a JSON float into a JsonValue
+pub fn float() {
+  decode.float |> decode.map(Float)
+}
+
+/// Decoder that parses a JSON array into a JsonValue
+pub fn array() {
+  decode.list(json_value_decoder()) |> decode.map(Array)
+}
+
+/// Decoder that parses a JSON object into a JsonValue
+pub fn object() {
+  decode.dict(decode.string, json_value_decoder())
+  |> decode.map(Object)
+}
+
+/// Decoder that parses a JSON null into a JsonValue
+pub fn null() {
+  decode.success(Null)
+}
+
 /// Returns a decoder for parsing JSON into a JsonValue
 ///
 /// This decoder can parse any valid JSON value.
@@ -47,14 +83,13 @@ pub type JsonValue {
 /// ```
 pub fn json_value_decoder() -> decode.Decoder(JsonValue) {
   use <- decode.recursive
-  decode.one_of(decode.string |> decode.map(String), [
-    decode.int |> decode.map(Int),
-    decode.bool |> decode.map(Bool),
-    decode.float |> decode.map(Float),
-    decode.list(json_value_decoder()) |> decode.map(Array),
-    decode.dict(decode.string, json_value_decoder())
-      |> decode.map(Object),
-    decode.success(Null),
+  decode.one_of(string(), [
+    int(),
+    bool(),
+    float(),
+    array(),
+    object(),
+    null(),
   ])
 }
 
@@ -125,7 +160,7 @@ pub fn json_value_decode(value: JsonValue, decoder: decode.Decoder(a)) {
   json_value_to_dynamic(value) |> decode.run(decoder)
 }
 
-/// Convert a JsonValue to gleam/json's Json type
+/// Convert a JsonValue to `gleam/json`'s Json type
 ///
 /// This is useful when you need to work with the standard library's JSON functions.
 ///
@@ -135,16 +170,16 @@ pub fn json_value_decode(value: JsonValue, decoder: decode.Decoder(a)) {
 /// import squirtle
 ///
 /// let value = squirtle.String("hello")
-/// squirtle.json_value_to_json(value)
+/// squirtle.json_value_to_gleam_json(value)
 /// ```
-pub fn json_value_to_json(value: JsonValue) -> json.Json {
+pub fn json_value_to_gleam_json(value: JsonValue) -> json.Json {
   case value {
     String(s) -> json.string(s)
     Int(i) -> json.int(i)
     Bool(b) -> json.bool(b)
     Float(f) -> json.float(f)
-    Array(arr) -> json.array(arr, json_value_to_json)
-    Object(obj) -> json.dict(obj, function.identity, json_value_to_json)
+    Array(arr) -> json.array(arr, json_value_to_gleam_json)
+    Object(obj) -> json.dict(obj, function.identity, json_value_to_gleam_json)
     Null -> json.null()
   }
 }
@@ -161,7 +196,7 @@ pub fn json_value_to_json(value: JsonValue) -> json.Json {
 /// // => "{\"name\":\"John\"}"
 /// ```
 pub fn json_value_to_string(value: JsonValue) -> String {
-  value |> json_value_to_json |> json.to_string
+  value |> json_value_to_gleam_json |> json.to_string
 }
 
 /// A JSON Patch operation
