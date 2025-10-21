@@ -863,3 +863,84 @@ fn do_diff(from: JsonValue, to: JsonValue, path: String) -> List(Patch) {
 pub fn diff(from: JsonValue, to: JsonValue) -> List(Patch) {
   do_diff(from, to, "")
 }
+
+/// Convert a Patch operation to a JsonValue
+///
+/// This function converts a single patch operation into a JsonValue representation
+/// that follows RFC 6902 format, making it easy to serialize patches for transmission.
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let patch = squirtle.Add(path: "/name", value: squirtle.String("John"))
+/// squirtle.patch_to_json_value(patch)
+/// // => Object(...) representing {"op":"add","path":"/name","value":"John"}
+/// ```
+pub fn patch_to_json_value(patch: Patch) -> JsonValue {
+  case patch {
+    Add(path, value) ->
+      Object(
+        dict.from_list([
+          #("op", String("add")),
+          #("path", String(path)),
+          #("value", value),
+        ]),
+      )
+    Remove(path) ->
+      Object(
+        dict.from_list([#("op", String("remove")), #("path", String(path))]),
+      )
+    Replace(path, value) ->
+      Object(
+        dict.from_list([
+          #("op", String("replace")),
+          #("path", String(path)),
+          #("value", value),
+        ]),
+      )
+    Copy(from, path) ->
+      Object(
+        dict.from_list([
+          #("op", String("copy")),
+          #("from", String(from)),
+          #("path", String(path)),
+        ]),
+      )
+    Move(from, path) ->
+      Object(
+        dict.from_list([
+          #("op", String("move")),
+          #("from", String(from)),
+          #("path", String(path)),
+        ]),
+      )
+    Test(path, value) ->
+      Object(
+        dict.from_list([
+          #("op", String("test")),
+          #("path", String(path)),
+          #("value", value),
+        ]),
+      )
+  }
+}
+
+/// Convert a Patch operation to a JSON string
+///
+/// This function converts a single patch operation to its JSON string representation
+/// according to RFC 6902 format.
+///
+/// ## Example
+///
+/// ```gleam
+/// import squirtle
+///
+/// let patch = squirtle.Add(path: "/name", value: squirtle.String("John"))
+/// squirtle.patch_to_string(patch)
+/// // => "{\"op\":\"add\",\"path\":\"/name\",\"value\":\"John\"}"
+/// ```
+pub fn patch_to_string(patch: Patch) -> String {
+  patch |> patch_to_json_value |> json_value_to_string
+}
