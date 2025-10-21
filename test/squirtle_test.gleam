@@ -1,6 +1,5 @@
 import fixture
 import gleam/dynamic/decode
-import gleam/list
 import gleam/option
 import gleam/result
 import gleeunit
@@ -12,7 +11,7 @@ pub fn main() -> Nil {
 
 pub fn hello_world_test() {
   let fixtures = fixture.load_fixtures()
-  assert list.length(fixtures) > 0
+  assert fixtures != []
   iter_fixtures(fixtures)
 }
 

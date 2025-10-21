@@ -35,7 +35,8 @@ pub fn patch_to_json_value_remove_test() {
 }
 
 pub fn patch_to_json_value_replace_test() {
-  let patch = squirtle.Replace(path: "/email", value: squirtle.String("new@example.com"))
+  let patch =
+    squirtle.Replace(path: "/email", value: squirtle.String("new@example.com"))
   let result = squirtle.patch_to_json_value(patch)
 
   result
@@ -131,16 +132,55 @@ pub fn round_trip_test() {
 
   // Apply it to a document
   let doc =
-    squirtle.Object(
-      dict.from_list([#("name", squirtle.String("John"))]),
-    )
+    squirtle.Object(dict.from_list([#("name", squirtle.String("John"))]))
 
   let assert Ok(result) = squirtle.patch(doc, [parsed_patch])
 
   result
   |> should.equal(
-    squirtle.Object(
-      dict.from_list([#("name", squirtle.String("Jane"))]),
-    ),
+    squirtle.Object(dict.from_list([#("name", squirtle.String("Jane"))])),
   )
+}
+
+pub fn patches_to_string_test() {
+  let patches = [
+    squirtle.Replace(path: "/name", value: squirtle.String("Jane")),
+    squirtle.Add(path: "/age", value: squirtle.Int(30)),
+    squirtle.Remove(path: "/old_field"),
+  ]
+
+  let result = squirtle.patches_to_string(patches)
+
+  let assert Ok(parsed_patches) = squirtle.parse_patches(result)
+
+  parsed_patches |> should.equal(patches)
+}
+
+pub fn patches_to_string_integration_test() {
+  let doc1 =
+    squirtle.Object(
+      dict.from_list([
+        #("name", squirtle.String("John")),
+        #("age", squirtle.Int(25)),
+      ]),
+    )
+
+  let doc2 =
+    squirtle.Object(
+      dict.from_list([
+        #("name", squirtle.String("Jane")),
+        #("age", squirtle.Int(30)),
+        #("email", squirtle.String("jane@example.com")),
+      ]),
+    )
+
+  let patches = squirtle.diff(doc1, doc2)
+
+  let patches_string = squirtle.patches_to_string(patches)
+
+  let assert Ok(received_patches) = squirtle.parse_patches(patches_string)
+
+  let assert Ok(result) = squirtle.patch(doc1, received_patches)
+
+  result |> should.equal(doc2)
 }
